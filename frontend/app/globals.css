@@ -10,3 +10,15 @@
 
 /* Booking mode and participant status lookup */
 .booking-mode-tabs{display:flex;gap:8px;margin:0 0 24px}.mode-tab{border:1px solid #e7e3dc;background:#fff;color:#777487;border-radius:999px;padding:10px 17px;font-size:11px;font-weight:700}.mode-tab.active{background:#292e49;color:#fff;border-color:#292e49}.status-lookup-card{max-width:560px;margin:0 auto 60px;padding:30px;background:#fff;border:1px solid #ece8e1;border-radius:16px;box-shadow:0 12px 36px #292e490b}.status-lookup-card h3{font:600 27px 'Playfair Display',serif;margin:7px 0}.status-lookup-card .request-heading>p{font-size:12px;color:#888596;line-height:1.7}.status-result{margin-top:20px;padding:18px;border:1px solid #ece8e1;border-radius:12px;background:#fbfaf8;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}.status-result h4{font:600 19px 'Playfair Display',serif;margin:7px 0 2px;color:var(--navy)}.status-result p{font-size:11px;color:#888596;line-height:1.6;margin:4px 0}.status-result>p{grid-column:1/-1}.status-lookup-card .status-pill{font-size:10px}.login-card input[type=email]{display:block;width:100%;border:1px solid #e4e0da;border-radius:9px;padding:12px 13px;background:#fff;color:var(--ink);outline:none;font-size:12px}
+
+/* Public calendar booking visibility improvements */
+.calendar-day{padding:5px 2px;gap:2px;min-height:82px}
+.calendar-day small{font-size:8px;line-height:1.25;white-space:nowrap}
+.calendar-day .day-approved{color:#39765b;font-weight:700}
+.calendar-day .day-pending{color:#a17a32}
+.calendar-day .day-available{color:#888596}
+.calendar-day.selected .day-approved,.calendar-day.selected .day-pending,.calendar-day.selected .day-available{color:#f0dfb8}
+.calendar-counts{display:flex;flex-wrap:wrap;gap:8px;margin:13px 0 0}
+.calendar-counts span{display:inline-flex;gap:4px;align-items:center;background:#f7f5f1;border-radius:7px;padding:7px 9px;font-size:9px;color:#77798a}
+.calendar-counts b{font-size:11px;color:var(--navy)}
+@media(max-width:680px){.calendar-day{min-height:72px}.calendar-day small{font-size:7px}.calendar-counts span{font-size:8px}}
