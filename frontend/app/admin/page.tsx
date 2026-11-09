@@ -6,7 +6,7 @@ const statuses = ["Pending", "Approved", "Rejected", "Cancelled", "All"];
 const prettyDate = (value:string) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric",year:"numeric"});
 export default function Admin() {
   const [token,setToken] = useState("");
-  const [username,setUsername] = useState("admin");
+  const [username,setUsername] = useState("");
   const [password,setPassword] = useState("");
   const [rows,setRows] = useState<Booking[]>([]);
   const [filter,setFilter] = useState("Pending");
@@ -55,7 +55,7 @@ export default function Admin() {
   if(!token) return <main className="admin-shell">
     <div className="admin-brand"><a href="/" className="brand-lockup"><span className="brand-mark">R</span><span><b>ROYALTICA</b><small>PUBLISHING ACADEMY</small></span></a><a className="quiet-link" href="/">← Back to booking page</a></div>
     <section className="login-layout"><div className="login-copy"><div className="eyebrow">ROYALTICA · CLASS OPERATIONS</div><h1>Your class,<br/><em>beautifully managed.</em></h1><p>Review student requests, confirm seats, and keep every morning session organized.</p><div className="login-points"><span>✦ Approval-based registration</span><span>✦ 25 approved seats per class</span><span>✦ Private participant records</span></div></div>
-      <form className="login-card" onSubmit={login}><div className="login-icon">✦</div><div className="eyebrow">ADMINISTRATOR ACCESS</div><h2>Welcome back</h2><p className="muted">Sign in to manage Morning Publishing Class.</p>{error&&<div className="alert error">{error}</div>}<label className="field"><span>Username</span><input autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} required/></label><label className="field"><span>Password</span><input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label><button className="primary-btn full" disabled={busy}>{busy?"Signing in…":"Sign in to dashboard →"}</button><small className="security-note">Secure administrator access · Sessions expire after 8 hours</small></form>
+      <form className="login-card" onSubmit={login}><div className="login-icon">✦</div><div className="eyebrow">ADMINISTRATOR ACCESS</div><h2>Welcome back</h2><p className="muted">Sign in to manage Morning Publishing Class.</p>{error&&<div className="alert error">{error}</div>}<label className="field"><span>Administrator email</span><input type="email" placeholder="admin@yourdomain.com" autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} required/></label><label className="field"><span>Password</span><input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label><button className="primary-btn full" disabled={busy}>{busy?"Signing in…":"Sign in to dashboard →"}</button><small className="security-note">Secure administrator access · Sessions expire after 8 hours</small></form>
     </section><footer className="site-footer">© Royaltica Publishing · Learn · Write · Publish · Grow</footer>
   </main>;
 

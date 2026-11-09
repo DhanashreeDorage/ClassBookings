@@ -2,6 +2,7 @@ import os
 import smtplib
 import logging
 from datetime import date, datetime, timedelta, timezone
+import re
 from email.message import EmailMessage
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,10 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("royaltica")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./royaltica.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = "HS256"
 TZ = ZoneInfo("America/New_York")
@@ -128,7 +133,7 @@ def health():
 
 @app.post("/api/admin/login")
 def login(data: LoginIn):
-    username = os.getenv("ADMIN_USERNAME", "admin")
+    username = os.getenv("ADMIN_EMAIL") or os.getenv("ADMIN_USERNAME", "admin")
     password = os.getenv("ADMIN_PASSWORD")
     if not password or data.username != username or data.password != password:
         raise HTTPException(401, "Incorrect username or password")
@@ -201,10 +206,11 @@ def create_booking(data: BookingIn, session: Session = Depends(db)):
     session.add(booking)
     session.commit()
     session.refresh(booking)
+    booking_reference = f"ROY-{booking.id:06d}"
     send_email(
         email,
         "Royaltica class booking request received",
-        f"Hello {booking.participant_name},\n\nWe received your request for {booking.class_date:%B %d, %Y}, 8:00–9:00 AM Eastern Time.\nYour request is Pending. Pending requests do not reserve a seat; your seat is confirmed only after approval.\n\nRoyaltica Publishing",
+        f"Hello {booking.participant_name},\n\nWe received your request for {booking.class_date:%B %d, %Y}, 8:00–9:00 AM Eastern Time.\nBooking reference: {booking_reference}\nYour request is Pending. Pending requests do not reserve a seat; your seat is confirmed only after approval.\n\nUse your email address and booking reference to check your status.\n\nRoyaltica Publishing",
     )
     admin_email = os.getenv("ADMIN_NOTIFICATION_EMAIL")
     if admin_email:
@@ -213,7 +219,27 @@ def create_booking(data: BookingIn, session: Session = Depends(db)):
             "New Morning Publishing Class booking request",
             f"New pending request #{booking.id}\nDate: {booking.class_date}\nName: {booking.participant_name}\nEmail: {booking.participant_email}",
         )
-    return {"id": booking.id, "status": booking.status, "message": "Your request has been received. It is not confirmed until approved."}
+    return {"id": booking.id, "reference": booking_reference, "status": booking.status, "message": "Your request has been received. It is not confirmed until approved."}
+
+@app.get("/api/bookings/status")
+def booking_status(email: EmailStr, reference: str, session: Session = Depends(db)):
+    """Return only the status for a matching email + booking reference."""
+    match = re.fullmatch(r"ROY-(\d{1,10})", reference.strip().upper())
+    if not match:
+        raise HTTPException(400, "Enter a valid booking reference, for example ROY-000123")
+    booking_id = int(match.group(1))
+    booking = session.scalar(
+        select(Booking).where(Booking.id == booking_id, Booking.participant_email == str(email).strip().lower())
+    )
+    if not booking:
+        raise HTTPException(404, "No booking matches that email address and reference")
+    return {
+        "reference": f"ROY-{booking.id:06d}",
+        "class_date": booking.class_date.isoformat(),
+        "class_time": "8:00–9:00 AM Eastern Time",
+        "status": booking.status,
+        "message": "Your seat is confirmed." if booking.status == "Approved" else "Your request is awaiting review." if booking.status == "Pending" else "Please contact Royaltica Publishing if you need help with this request.",
+    }
 
 @app.get("/api/admin/bookings")
 def list_bookings(
