@@ -22,3 +22,13 @@
 .calendar-counts span{display:inline-flex;gap:4px;align-items:center;background:#f7f5f1;border-radius:7px;padding:7px 9px;font-size:9px;color:#77798a}
 .calendar-counts b{font-size:11px;color:var(--navy)}
 @media(max-width:680px){.calendar-day{min-height:72px}.calendar-day small{font-size:7px}.calendar-counts span{font-size:8px}}
+
+/* Approved participant names shown on the public class calendar */
+.calendar-day .day-participant{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#55516a;font-size:7px;font-weight:650}
+.calendar-day .day-more{color:#77718a;font-size:7px;font-weight:700}
+.calendar-day.selected .day-participant,.calendar-day.selected .day-more{color:#fff0cc}
+.participant-roster{flex-basis:100%;padding:10px 12px;background:#f8f6f2;border-radius:9px;margin-top:3px}
+.participant-roster strong{display:block;color:var(--navy);font-size:10px;margin-bottom:6px}
+.participant-roster ul{margin:0;padding-left:17px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px}
+.participant-roster li{font-size:10px;color:#656174;overflow-wrap:anywhere}
+@media(max-width:680px){.calendar-day .day-participant{font-size:6px}.participant-roster ul{grid-template-columns:1fr}}

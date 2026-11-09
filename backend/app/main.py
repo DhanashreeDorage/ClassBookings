@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from fastapi import FastAPI, Depends, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import create_engine, String, Date, DateTime, Text, select, func
+from sqlalchemy import create_engine, String, Date, DateTime, Text, select, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker, Session
 from sqlalchemy.exc import IntegrityError
 from jose import jwt, JWTError
@@ -157,18 +157,32 @@ def public_calendar(start: date = Query(...), end: date = Query(...), session: S
     for class_day, status, count in rows:
         by_day.setdefault(class_day.isoformat(), {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
         by_day[class_day.isoformat()][status.lower()] = count
+    participant_rows = session.execute(
+        select(Booking.class_date, Booking.participant_name)
+        .where(
+            Booking.class_date.between(start, end),
+            Booking.status == "Approved",
+        )
+        .order_by(Booking.class_date, Booking.participant_name)
+    ).all()
+    names_by_day: dict[str, list[str]] = {}
+    for class_day, participant_name in participant_rows:
+        names_by_day.setdefault(class_day.isoformat(), []).append(participant_name)
+
     sessions = []
     current = start
     while current <= end:
-        counts = by_day.get(current.isoformat(), {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
+        day_key = current.isoformat()
+        counts = by_day.get(day_key, {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
         approved = counts["approved"]
         sessions.append({
-            "date": current.isoformat(),
+            "date": day_key,
             "start_time": "08:00",
             "end_time": "09:00",
             "time_zone": "America/New_York",
             "approved": approved,
             "pending": counts["pending"],
+            "participants": names_by_day.get(day_key, []),
             "capacity": CAPACITY,
             "available": max(0, CAPACITY - approved),
             "booking_status": "Full" if approved >= CAPACITY else "Open",
@@ -181,20 +195,27 @@ def create_booking(data: BookingIn, session: Session = Depends(db)):
     if data.class_date < datetime.now(TZ).date():
         raise HTTPException(400, "Please choose today or a future class date")
     email = str(data.email).strip().lower()
+    if engine.dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:email, 0))"),
+            {"email": email},
+        )
+    existing_active = session.scalar(
+        select(Booking).where(
+            Booking.participant_email == email,
+            Booking.status.in_(["Pending", "Approved"]),
+        )
+    )
+    if existing_active:
+        raise HTTPException(
+            409,
+            f"You already have an active booking for {existing_active.class_date:%B %d, %Y} ({existing_active.status}). Only one active class booking is allowed per person. Please check your approval status instead.",
+        )
     approved_count = session.scalar(
         select(func.count(Booking.id)).where(Booking.class_date == data.class_date, Booking.status == "Approved")
     ) or 0
     if approved_count >= CAPACITY:
         raise HTTPException(409, "This class is full. The maximum of 25 approved students has been reached.")
-    duplicate = session.scalar(
-        select(Booking).where(
-            Booking.class_date == data.class_date,
-            Booking.participant_email == email,
-            Booking.status.in_(["Pending", "Approved"]),
-        )
-    )
-    if duplicate:
-        raise HTTPException(409, "An active booking already exists for this email and class date")
     booking = Booking(
         class_date=data.class_date,
         participant_name=data.full_name.strip(),
