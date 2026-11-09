@@ -1,31 +1,61 @@
-# Royaltica Publishing Morning Class Booking
+# Royaltica Publishing Morning Class Booking — corrected deployment package
 
-Production-oriented single-service deployment for Render. The Next.js public portal and protected admin portal run in one Render web service; FastAPI runs privately inside the same container and is reverse-proxied through Next.js. Render PostgreSQL stores bookings persistently across devices.
+A two-interface booking app: public booking page + public calendar, and a protected admin dashboard. The app runs Next.js and FastAPI in one Render Docker web service and stores records in PostgreSQL.
 
-## Features
+## Included behavior
 
-- Public participant booking form and monthly calendar
-- Daily 8:00–9:00 AM `America/New_York` sessions, daylight-saving aware
-- Unlimited capacity and admin approval workflow
-- Private booking lookup requiring booking reference plus registered email
-- Public calendar exposes aggregate counts only
-- Private `/admin` portal with server-validated bearer-token authentication
-- Admin list includes student names, emails, phone numbers, notes, dates, and statuses
-- Pending, Approved, Rejected, and Cancelled states
-- SMTP notifications for request receipt and admin decisions (only reported as sent after SMTP succeeds)
-- PostgreSQL persistent storage; no Google Calendar integration
+- Daily 8:00–9:00 AM `America/New_York` session (automatically follows Eastern daylight saving time)
+- Maximum 25 active bookings per date; Pending and Approved requests reserve a place
+- Admin approval required; statuses are Pending, Approved, Rejected, and Cancelled
+- Public calendar shows aggregate counts only; no participant names, email addresses, phone numbers, or notes
+- Admin dashboard shows participant details and supports approval, rejection, and cancellation
+- Participants can look up their booking using booking reference + registered email
+- Duplicate active requests for the same email/date are blocked
+- PostgreSQL persistence; no Google Calendar integration
+- Optional email notifications; the UI reports success only when SMTP delivery succeeds
+- Backend/database health check must pass before the frontend starts
 
-## Deploy on Render (Blueprint)
+## Deploy to Render using Neon Free PostgreSQL
 
-1. Push this project to a GitHub repository you control.
-2. In Render, choose **New → Blueprint** and select that repository.
-3. Render reads `render.yaml` and provisions a PostgreSQL database and the web service.
-4. When prompted, set `ADMIN_EMAIL` and a strong unique `ADMIN_PASSWORD`. Store the password in a password manager; do not commit it to Git.
-5. Optionally provide SMTP settings (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`) to enable participant email notifications.
-6. Deploy. Wait for the web service health check at `/api/health` to pass.
-7. Open the service URL for participants. Open `<service-url>/admin` for the private admin login.
+This package uses Render's free web service and Neon PostgreSQL. Neon is a separate database provider; the database connection string is supplied to Render as an environment variable.
 
-The blueprint generates `SECRET_KEY` and injects the managed PostgreSQL connection string. The API is bound to localhost inside the same container and is not separately exposed to the public internet. Next.js proxies `/api/*` to FastAPI on the internal loopback interface.
+1. Create a PostgreSQL project on Neon Free and copy its connection string. Keep `sslmode=require` in the URL. Treat the URL as a password.
+2. Upload these project files to a GitHub repository you control. `render.yaml` must be at the repository root.
+3. In Render, select **New → Blueprint**, connect that repository, and apply the Blueprint.
+4. When prompted, enter `DATABASE_URL` (the Neon connection string), `ADMIN_EMAIL`, and a strong unique `ADMIN_PASSWORD`. Render generates `SECRET_KEY` automatically.
+5. Wait until the deploy succeeds and `/api/health` passes.
+6. Open the Render service URL for the public booking page. Open `<service-url>/admin` for administrator sign-in.
+
+### Updating your existing `classbookings.onrender.com` service
+
+If you want to keep the current Render service and URL, update the GitHub repository connected to that service with the files in this package, then trigger **Manual Deploy → Deploy latest commit**. Do not create a second Render service unless you want a new URL.
+
+In the existing Render service, open **Environment** and verify these variables exist:
+
+- `DATABASE_URL`: your Neon PostgreSQL connection string (or another persistent PostgreSQL URL)
+- `SECRET_KEY`: a random secret of at least 32 characters
+- `ADMIN_EMAIL`: the admin login email
+- `ADMIN_PASSWORD`: a strong, unique admin password
+
+To generate a secret locally, run:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Paste the generated value into Render as `SECRET_KEY`. Do not put secrets in GitHub or share them in chat. Save the variables and redeploy.
+
+## Admin and participant URLs
+
+- Public booking page: `https://YOUR-SERVICE.onrender.com/`
+- Admin dashboard: `https://YOUR-SERVICE.onrender.com/admin`
+- Health check: `https://YOUR-SERVICE.onrender.com/api/health`
+
+The health check returns `status: ok`, `database: connected`, and the configured per-session capacity only when the API and database are reachable.
+
+## Optional email notifications
+
+Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM` in Render. Render Free may restrict outbound SMTP ports; use an email provider/API that supports HTTPS or an eligible paid hosting option if SMTP cannot connect. Without working email configuration, booking records still save and the app explicitly says email delivery was not confirmed.
 
 ## Local development
 
@@ -37,11 +67,10 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
-# Set SECRET_KEY (32+ random characters), ADMIN_EMAIL and ADMIN_PASSWORD
 uvicorn app.main:app --reload
 ```
 
-Frontend (in another terminal):
+Frontend in another terminal:
 
 ```bash
 cd frontend
@@ -49,14 +78,10 @@ npm install
 npm run dev
 ```
 
-For local development, set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` if you want direct API calls, or use the Next.js rewrite and run FastAPI on `127.0.0.1:8000`.
+For local development, `backend/.env` must contain `SECRET_KEY` (32+ characters), `ADMIN_EMAIL`, and `ADMIN_PASSWORD`. The example SQLite database is for local testing only; use persistent PostgreSQL for deployment.
 
-## Security and operational notes
+## Important launch notes
 
-- The public interface has no admin navigation link. `/admin` is protected by the API's admin login; knowing the URL does not grant access.
-- Status lookup requires both the booking reference and matching email.
-- Do not use demo credentials. Render prompts for your own admin credentials.
-- Configure SMTP to enable real email. Without it, bookings still persist, but the app accurately reports that email delivery was not confirmed.
-- Before broad public launch, add rate limiting (especially to login and public booking endpoints), MFA or an identity provider, a privacy notice, and a retention/deletion policy.
-- Back up the managed database and test restoration.
-- This app does not integrate Google Calendar.
+- This is an operational starter app, not a fully audited enterprise booking platform. Before broad public use, add rate limiting, MFA, a privacy notice, a retention/deletion policy, and a tested database backup/restore process.
+- Render Free services can sleep when idle; the first visit may take time to wake. Neon Free also has usage limits and may scale compute to zero.
+- Keep the admin password and database connection string private.

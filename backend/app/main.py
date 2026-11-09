@@ -15,6 +15,7 @@ from sqlalchemy import Date, DateTime, Index, String, Text, create_engine, func,
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 EASTERN = ZoneInfo("America/New_York")
+SESSION_CAPACITY = 25
 
 
 class Settings(BaseSettings):
@@ -157,8 +158,9 @@ def notify(to: str, subject: str, body: str) -> bool:
 
 
 @app.get("/api/health")
-def health():
-    return {"status": "ok"}
+def health(db: Session = Depends(db_session)):
+    db.execute(text("SELECT 1"))
+    return {"status": "ok", "database": "connected", "capacity_per_session": SESSION_CAPACITY}
 
 
 @app.post("/api/admin/login")
@@ -180,6 +182,11 @@ def create_booking(payload: BookingCreate, db: Session = Depends(db_session)):
     if payload.class_date < datetime.now(EASTERN).date():
         raise HTTPException(400, "Please choose today or a future class date")
     email = str(payload.participant_email).lower()
+
+    # Serialize same-date requests in PostgreSQL to enforce capacity under concurrency.
+    if db.bind and db.bind.dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:class_day))"), {"class_day": payload.class_date.isoformat()})
+
     existing = db.scalar(select(Booking).where(
         Booking.participant_email == email,
         Booking.class_date == payload.class_date,
@@ -187,6 +194,13 @@ def create_booking(payload: BookingCreate, db: Session = Depends(db_session)):
     ))
     if existing:
         raise HTTPException(409, "An active request already exists for this email and class date")
+
+    active_count = db.scalar(select(func.count(Booking.id)).where(
+        Booking.class_date == payload.class_date,
+        Booking.status.in_(["Pending", "Approved"]),
+    )) or 0
+    if active_count >= SESSION_CAPACITY:
+        raise HTTPException(409, "This class session is full. Please choose another date.")
 
     reference = secrets.token_urlsafe(12).replace("-", "").replace("_", "")[:16].upper()
     booking = Booking(
@@ -246,10 +260,12 @@ def public_calendar(start: date, end: date, db: Session = Depends(db_session)):
     ).all()
     result = {}
     for day, status_value, count in rows:
-        result.setdefault(day.isoformat(), {"pending": 0, "approved": 0})
+        result.setdefault(day.isoformat(), {"pending": 0, "approved": 0, "remaining": SESSION_CAPACITY})
         if status_value in {"Pending", "Approved"}:
             result[day.isoformat()][status_value.lower()] = count
-    return {"time": "8:00 AM–9:00 AM", "time_zone": "America/New_York", "capacity": "Unlimited", "dates": result}
+    for counts in result.values():
+        counts["remaining"] = max(0, SESSION_CAPACITY - counts["pending"] - counts["approved"])
+    return {"time": "8:00 AM–9:00 AM", "time_zone": "America/New_York", "capacity": SESSION_CAPACITY, "dates": result}
 
 
 @app.get("/api/admin/bookings")
