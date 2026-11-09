@@ -1,14 +1,72 @@
-'use client';
-import {useEffect,useState} from 'react';
-const API=process.env.NEXT_PUBLIC_API_URL||'';
-type Booking={id:number;class_date:string;name:string;email:string;phone?:string;note?:string;status:string;created_at:string};
-async function readJson(r:Response){const raw=await r.text();try{return raw?JSON.parse(raw):{}}catch{throw new Error('The server returned an unexpected response. Check the backend service logs.')}}
-export default function Admin(){const [token,setToken]=useState('');const [email,setEmail]=useState('');const [password,setPassword]=useState('');const [rows,setRows]=useState<Booking[]>([]);const [filter,setFilter]=useState('Pending');const [query,setQuery]=useState('');const [dateFilter,setDateFilter]=useState('');const [msg,setMsg]=useState('');const [busy,setBusy]=useState(false);
- async function login(e:React.FormEvent){e.preventDefault();setBusy(true);setMsg('');const body=new URLSearchParams({username:email,password});try{const r=await fetch(`${API}/api/admin/login`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body});const d=await readJson(r);if(!r.ok)throw new Error(d.detail||'Login failed');setToken(d.access_token);setMsg('Signed in successfully.')}catch(e:any){setMsg(e.message||'Login failed')}finally{setBusy(false)}}
- async function load(t=token,f=filter,q=query,date=dateFilter){if(!t)return;const p=new URLSearchParams();if(f!=='All')p.set('status_filter',f);if(q)p.set('q',q);if(date)p.set('class_date',date);try{const r=await fetch(`${API}/api/admin/bookings?${p}`,{headers:{Authorization:`Bearer ${t}`}});const data=await readJson(r);if(!r.ok){setMsg(data.detail||'Could not load bookings');if(r.status===401)setToken('');return}setRows(data)}catch(e:any){setMsg(e.message||'Could not load bookings')}}
- useEffect(()=>{if(token)load()},[token,filter,dateFilter]);
- async function change(id:number,status:string){try{const r=await fetch(`${API}/api/admin/bookings/${id}`,{method:'PATCH',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({status})});const d=await readJson(r);if(!r.ok){setMsg(d.detail||'Update failed');return}setMsg(`Booking #${id}: ${status}. ${d.email_notification_sent?'Participant email sent.':'Email delivery is not configured or could not be confirmed.'}`);load()}catch(e:any){setMsg(e.message||'Update failed')}}
- return <main className="admin-shell"><header className="admin-header"><a className="wordmark" href="/"><span className="brand-mark">R</span><span>ROYALTICA<small>PUBLISHING</small></span></a><a className="admin-link" href="/">← Public booking page</a></header><div className="admin-title"><span className="section-index">ROYALTICA / PRIVATE WORKSPACE</span><h1>Booking management.</h1><p>Review requests, manage seats, and keep your morning sessions organised.</p></div>
- {!token?<section className="admin-panel admin-login"><span className="section-index">ADMINISTRATOR ACCESS</span><h2>Welcome back.</h2><p style={{color:'#85867c',fontSize:11,lineHeight:1.7}}>Sign in with your authorised Royaltica administrator credentials.</p><form onSubmit={login}><label>Admin email<input type="email" autoComplete="username" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="admin@example.com"/></label><label>Password<input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)} placeholder="Your password"/></label><button className="admin-button" disabled={busy}>{busy?'Signing in…':'Sign in securely →'}</button></form>{msg&&<div className="admin-message" role="status">{msg}</div>}</section>:<><section className="admin-panel"><div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'center',flexWrap:'wrap'}}><div><span className="section-index">LIVE BOOKING OVERVIEW</span><h2 style={{marginBottom:0}}>Class requests</h2></div><button className="admin-button secondary" onClick={()=>{setToken('');setRows([]);setPassword('');setMsg('Signed out.')}}>Sign out</button></div><div className="admin-stats"><div><strong>{rows.length}</strong><span>REQUESTS IN VIEW</span></div><div><strong>{rows.filter(b=>b.status==='Pending').length}</strong><span>PENDING REVIEW</span></div><div><strong>{rows.filter(b=>b.status==='Approved').length}</strong><span>APPROVED IN VIEW</span></div></div><div className="admin-toolbar"><label>Status<select value={filter} onChange={e=>setFilter(e.target.value)}>{['Pending','Approved','Rejected','Cancelled','All'].map(x=><option key={x}>{x}</option>)}</select></label><label>Class date<input type="date" value={dateFilter} onChange={e=>setDateFilter(e.target.value)}/></label><label>Search name or email<input placeholder="Search participants" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==='Enter'&&load(token,filter,query,dateFilter)}/></label></div><div style={{display:'flex',gap:8,marginBottom:18,flexWrap:'wrap'}}><button className="admin-button" onClick={()=>load(token,filter,query,dateFilter)}>Apply filters / Refresh</button><button className="admin-button secondary" onClick={()=>{setDateFilter('');setQuery('');setFilter('Pending')}}>Reset</button></div>{rows.length===0?<p style={{color:'#85867c',fontSize:12}}>No matching booking requests.</p>:<div className="admin-table-wrap"><table><thead><tr><th>CLASS DATE</th><th>PARTICIPANT</th><th>CONTACT</th><th>LEARNING GOAL</th><th>STATUS</th><th>DECISION</th></tr></thead><tbody>{rows.map(b=><tr key={b.id}><td><strong>{b.class_date}</strong><br/>8–9 AM Eastern</td><td><strong>{b.name}</strong><br/><span style={{color:'#929387'}}>Request #{b.id}</span></td><td>{b.email}<br/>{b.phone||'—'}</td><td>{b.note||'—'}</td><td><span className={`admin-status ${b.status}`}>{b.status}</span></td><td><div className="admin-actions">{b.status==='Pending'&&<><button className="admin-button" onClick={()=>change(b.id,'Approved')}>Approve</button><button className="admin-button danger" onClick={()=>change(b.id,'Rejected')}>Reject</button></>}{b.status==='Approved'&&<button className="admin-button danger" onClick={()=>change(b.id,'Cancelled')}>Cancel</button>}</div></td></tr>)}</tbody></table></div>}{msg&&<div className="admin-message" role="status">{msg}</div>}</section></>}
- </main>
+"use client";
+import { useEffect, useMemo, useState } from "react";
+const API = process.env.NEXT_PUBLIC_API_URL || "";
+type Booking = { id:number; class_date:string; name:string; email:string; phone?:string; learning_goal?:string; status:string; created_at?:string };
+const statuses = ["Pending", "Approved", "Rejected", "Cancelled", "All"];
+const prettyDate = (value:string) => new Date(`${value}T12:00:00`).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric",year:"numeric"});
+export default function Admin() {
+  const [token,setToken] = useState("");
+  const [username,setUsername] = useState("admin");
+  const [password,setPassword] = useState("");
+  const [rows,setRows] = useState<Booking[]>([]);
+  const [filter,setFilter] = useState("Pending");
+  const [query,setQuery] = useState("");
+  const [dateFilter,setDateFilter] = useState("");
+  const [error,setError] = useState("");
+  const [message,setMessage] = useState("");
+  const [busy,setBusy] = useState(false);
+  const counts = useMemo(()=>({total:rows.length,pending:rows.filter(x=>x.status==="Pending").length,approved:rows.filter(x=>x.status==="Approved").length,rejected:rows.filter(x=>x.status==="Rejected").length}),[rows]);
+
+  async function load(activeToken=token) {
+    if(!activeToken) return;
+    const params = new URLSearchParams();
+    if(dateFilter) params.set("class_date",dateFilter);
+    if(query.trim()) params.set("q",query.trim());
+    const response = await fetch(`${API}/api/admin/bookings?${params.toString()}`,{headers:{Authorization:`Bearer ${activeToken}`},cache:"no-store"});
+    const payload = await response.json();
+    if(!response.ok) { setError(payload.detail||"Could not load bookings"); if(response.status===401) setToken(""); return; }
+    setRows(payload);
+    setError("");
+  }
+  async function login(event:React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      const response = await fetch(`${API}/api/admin/login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,password})});
+      const payload = await response.json();
+      if(!response.ok) throw new Error(payload.detail||"Login failed");
+      setToken(payload.access_token); setPassword(""); await load(payload.access_token);
+    } catch(e) { setError(e instanceof Error?e.message:"Unable to sign in"); }
+    finally { setBusy(false); }
+  }
+  async function changeStatus(id:number,action:"approve"|"reject"|"cancel") {
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const response = await fetch(`${API}/api/admin/bookings/${id}/${action}`,{method:"POST",headers:{Authorization:`Bearer ${token}`}});
+      const payload = await response.json();
+      if(!response.ok) throw new Error(payload.detail||"Action failed");
+      setMessage(`Booking #${id}: ${payload.status}`); await load();
+    } catch(e) { setError(e instanceof Error?e.message:"Unable to update booking"); }
+    finally { setBusy(false); }
+  }
+  useEffect(()=>{ if(token) load(); },[filter,dateFilter]);
+  const visibleRows = rows.filter(row=>filter==="All"||row.status===filter);
+  const today = new Date().toLocaleDateString("en-CA");
+
+  if(!token) return <main className="admin-shell">
+    <div className="admin-brand"><a href="/" className="brand-lockup"><span className="brand-mark">R</span><span><b>ROYALTICA</b><small>PUBLISHING ACADEMY</small></span></a><a className="quiet-link" href="/">← Back to booking page</a></div>
+    <section className="login-layout"><div className="login-copy"><div className="eyebrow">ROYALTICA · CLASS OPERATIONS</div><h1>Your class,<br/><em>beautifully managed.</em></h1><p>Review student requests, confirm seats, and keep every morning session organized.</p><div className="login-points"><span>✦ Approval-based registration</span><span>✦ 25 approved seats per class</span><span>✦ Private participant records</span></div></div>
+      <form className="login-card" onSubmit={login}><div className="login-icon">✦</div><div className="eyebrow">ADMINISTRATOR ACCESS</div><h2>Welcome back</h2><p className="muted">Sign in to manage Morning Publishing Class.</p>{error&&<div className="alert error">{error}</div>}<label className="field"><span>Username</span><input autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} required/></label><label className="field"><span>Password</span><input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required/></label><button className="primary-btn full" disabled={busy}>{busy?"Signing in…":"Sign in to dashboard →"}</button><small className="security-note">Secure administrator access · Sessions expire after 8 hours</small></form>
+    </section><footer className="site-footer">© Royaltica Publishing · Learn · Write · Publish · Grow</footer>
+  </main>;
+
+  return <main className="dashboard-shell"><aside className="sidebar"><a href="/" className="brand-lockup"><span className="brand-mark">R</span><span><b>ROYALTICA</b><small>PUBLISHING ACADEMY</small></span></a><div className="side-label">WORKSPACE</div><a className="side-item active" href="/admin">▦ <span>Overview</span></a><a className="side-item" href="/">◷ <span>Public booking page</span></a><div className="sidebar-bottom"><div className="admin-avatar">A</div><div><b>Administrator</b><small>Class operations</small></div><button className="icon-btn" title="Sign out" onClick={()=>{setToken("");setRows([])}}>↪</button></div></aside>
+    <section className="dashboard-main"><header className="dash-top"><div><div className="eyebrow">ROYALTICA / MORNING CLASS</div><h1>Booking overview</h1></div><div className="top-actions"><span className="live-dot">Live workspace</span><button className="outline-btn" onClick={()=>load()} disabled={busy}>↻ Refresh</button></div></header>
+      <div className="welcome-strip"><div><span className="welcome-tag">DAILY SESSION · EASTERN TIME</span><h2>Good morning. Let’s make room for great stories.</h2><p>Manage registrations for your 8:00–9:00 AM publishing class.</p></div><div className="welcome-time"><b>08:00 <span>AM</span></b><small>— 09:00 AM · ET</small></div></div>
+      <div className="stat-grid"><article className="stat-card"><span>Total shown</span><b>{counts.total}</b><small>Current filtered results</small></article><article className="stat-card"><span>Pending review</span><b>{counts.pending}</b><small>Awaiting your decision</small></article><article className="stat-card"><span>Approved bookings</span><b>{counts.approved}</b><small>Across selected results</small></article><article className="stat-card"><span>Not approved</span><b>{counts.rejected}</b><small>Rejected requests shown</small></article></div>
+      <section className="table-card"><div className="table-heading"><div><div className="eyebrow">PARTICIPANT MANAGEMENT</div><h2>Class registrations</h2><p>Review requests and manage approved seats.</p></div><span className="capacity-chip">25 seats per class</span></div>
+        <div className="filters"><label className="search-field">⌕ <input placeholder="Search name or email" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>e.key==="Enter"&&load()}/></label><select value={filter} onChange={e=>setFilter(e.target.value)}>{statuses.map(x=><option key={x} value={x}>{x} status</option>)}</select><input aria-label="Filter by class date" type="date" value={dateFilter} min={today} onChange={e=>setDateFilter(e.target.value)}/><button className="outline-btn" onClick={()=>load()}>Apply filters</button><button className="text-btn" onClick={()=>{setQuery("");setDateFilter("");setFilter("Pending");setRows(current=>current.filter(x=>x.status==="Pending"))}}>Reset</button></div>
+        {error&&<div className="alert error">{error}</div>}{message&&<div className="alert success">{message}</div>}
+        <div className="table-wrap"><table className="booking-table"><thead><tr><th>CLASS DATE</th><th>PARTICIPANT</th><th>LEARNING GOAL</th><th>STATUS</th><th>ACTIONS</th></tr></thead><tbody>{visibleRows.map(b=><tr key={b.id}><td><b>{prettyDate(b.class_date)}</b><small>8:00–9:00 AM ET</small></td><td><b>{b.name}</b><a href={`mailto:${b.email}`}>{b.email}</a>{b.phone&&<small>{b.phone}</small>}</td><td className="goal-cell">{b.learning_goal||"—"}</td><td><span className={`status-pill ${b.status.toLowerCase()}`}>{b.status}</span></td><td><div className="action-group">{b.status==="Pending"&&<><button className="approve-btn" disabled={busy} onClick={()=>changeStatus(b.id,"approve")}>Approve</button><button className="reject-btn" disabled={busy} onClick={()=>changeStatus(b.id,"reject")}>Reject</button></>}{b.status==="Approved"&&<button className="reject-btn" disabled={busy} onClick={()=>changeStatus(b.id,"cancel")}>Cancel seat</button>}</div></td></tr>)}</tbody></table>{!visibleRows.length&&<div className="empty-state"><span>✦</span><b>No registrations found</b><p>Try changing your filters or refresh the list.</p></div>}</div>
+      </section><footer className="site-footer">Participant information is private and visible only to authorized administrators.</footer>
+    </section></main>;
 }

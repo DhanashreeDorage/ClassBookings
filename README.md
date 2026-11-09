@@ -1,87 +1,83 @@
-# Royaltica Publishing Morning Class — Render Edition
+# Royaltica Publishing — Morning Class Booking (Premium SaaS Upgrade)
 
-A single-service Render deployment containing the modern Royaltica public booking experience, private admin dashboard, FastAPI API, and PostgreSQL-backed persistence.
+This is an upgrade of the existing Royaltica Morning Class Booking starter. It retains the Next.js + FastAPI + PostgreSQL architecture and replaces the basic interface with a premium publishing-academy design.
 
 ## Included
 
-- Public booking page and monthly calendar
-- Daily 8:00–9:00 AM `America/New_York` class (DST-aware)
-- Maximum 25 active requests per date; Pending and Approved reserve seats
-- Admin approval workflow: Pending, Approved, Rejected, Cancelled
-- Private admin dashboard at `/admin`
-- Public calendar exposes seat counts only, never participant details
-- Duplicate active booking protection for the same email/date
-- Optional SMTP email notifications; the app does not claim delivery unless SMTP send succeeds
-- No Google Calendar integration
-- One Docker web service: Next.js frontend + FastAPI backend
-- Render Blueprint provisions a managed PostgreSQL database and wires its private connection into `DATABASE_URL`
+- Premium public booking portal with responsive monthly calendar.
+- Premium admin sign-in and booking-management dashboard.
+- Daily 8:00–9:00 AM `America/New_York` class sessions (DST-aware date handling).
+- Maximum **25 approved students per class date**.
+- Pending requests do not reserve a seat; approvals are checked against capacity on the server.
+- A class becomes Full when it has 25 approved bookings; cancellations release a seat.
+- Public calendar shows approved/pending counts and availability only, never participant details.
+- Admin filters by status, date, name, and email; approve/reject/cancel actions.
+- Admin API protected by an expiring bearer token.
+- Optional SMTP email hooks. Email delivery is not guaranteed until a provider is configured and tested.
+- No Google Calendar integration.
+- `/health` endpoint for deployment health checks.
 
-## Database included
+## Project structure
 
-The `render.yaml` Blueprint defines a Render-managed PostgreSQL database named `royaltica-classbookings-db` and automatically connects it to the web service through the private `DATABASE_URL` connection string. On first startup, SQLAlchemy creates the `bookings` and `booking_audit` tables and the active-booking uniqueness index.
+- `frontend/` — Next.js App Router + TypeScript UI
+- `backend/` — FastAPI + SQLAlchemy API
+- `docker-compose.yml` — local development services
+- `.env.example` — environment variable template
 
-**Important about existing data:** The Blueprint database is a new, empty database. If your current `classbookings` app already has a PostgreSQL database containing bookings, do not switch `DATABASE_URL` to the new database unless you intend to start fresh. Keep your existing database URL instead, or arrange a database backup and migration first. The application code can use an existing compatible PostgreSQL database too.
+## Run locally
 
-The Blueprint currently uses Render's Free Postgres plan for a low-cost test deployment. Render Free Postgres is limited to 1 GB and expires 30 days after creation; it has no backups. Upgrade the database to a paid plan before using this for real ongoing bookings. See [Render's Free instance limitations](https://render.com/docs/free).
+1. Install Docker Desktop.
+2. Copy `.env.example` to `.env` and set a secure `SECRET_KEY` and `ADMIN_PASSWORD`.
+3. For local Docker Compose, set `DATABASE_URL=postgresql+psycopg://royaltica:change-me@db:5432/royaltica` and `FRONTEND_ORIGIN=http://localhost:3000`.
+4. Run `docker compose up --build`.
+5. Open `http://localhost:3000`; admin page is `/admin`.
 
-## Deploy to your existing Render service
+Generate a key on macOS/Linux:
 
-This package is configured for the existing Render service named `classbookings` and the public URL can remain `https://classbookings.onrender.com` if you deploy it to that same service.
-
-1. Download and extract this ZIP.
-2. Replace the contents of the GitHub repository connected to your existing `classbookings` Render service with the contents of this folder. Keep the project files at the repository root (Dockerfile, render.yaml, backend/, frontend/, deploy/).
-3. Commit and push the changes to the branch Render deploys.
-4. In Render Dashboard, open `classbookings` → **Settings** and confirm:
-   - Runtime: Docker
-   - Dockerfile Path: `./Dockerfile`
-   - Docker Build Context Directory: `.`
-   - Health Check Path: `/api/health`
-5. To provision the database from `render.yaml`, create/sync a Render Blueprint from this repository and review the proposed resources before applying. The Blueprint keeps the web service name `classbookings` and adds a new PostgreSQL database. If you are deploying only the code to the existing service, create a PostgreSQL database in Render Dashboard → New → PostgreSQL, then copy its **Internal Database URL** into `DATABASE_URL` (web service and database should be in the same region).
-6. Open **Environment** and confirm these values exist:
-
-   | Variable | Required value |
-   |---|---|
-   | `DATABASE_URL` | The Blueprint-managed PostgreSQL connection, or your existing persistent PostgreSQL internal connection string |
-   | `SECRET_KEY` | Random secret at least 32 characters |
-   | `ADMIN_EMAIL` | Your administrator login email |
-   | `ADMIN_PASSWORD` | A strong, unique administrator password |
-
-   Optional email settings: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_USE_TLS`.
-
-7. Save environment changes. If Render does not deploy automatically, choose **Manual Deploy → Deploy latest commit**.
-8. Wait for the deploy to finish. The container starts FastAPI, checks `/api/health` (including the database connection), and only then starts Next.js.
-
-## Important database note
-
-This ZIP does not create a new database or migrate data from another database. Keep and use your existing persistent PostgreSQL database by copying its connection string into `DATABASE_URL`. Do not use SQLite for a public production deployment. Do not delete your existing database when replacing application files.
-
-## Verify after deployment
-
-- Public site: `https://classbookings.onrender.com/`
-- Admin dashboard: `https://classbookings.onrender.com/admin`
-- API health: `https://classbookings.onrender.com/api/health`
-
-The health endpoint should return JSON similar to:
-
-```json
-{"status":"ok","database":"connected","capacity_per_session":25}
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Then submit a test booking with a test email, confirm it appears in the admin dashboard as Pending, approve it, and check the public calendar/status lookup. Remove test data if you do not want it retained.
+## Render deployment
 
-## Optional email setup
+The currently deployed Render service is not changed by editing this local source archive. Apply these files to the GitHub repository connected to Render, then deploy.
 
-Configure valid SMTP credentials in Render Environment. Without SMTP configuration, booking data still saves, but the app will report that email delivery was not confirmed.
+Configure the following environment variables in Render (use the PostgreSQL **Internal Database URL** for the backend when available):
 
-## Security and operational notes
+- `DATABASE_URL` — PostgreSQL connection URL. Ensure the SQLAlchemy URL starts with `postgresql+psycopg://` (or adjust the driver accordingly).
+- `SECRET_KEY` — a random value of at least 32 characters; do not commit it to GitHub or expose it in frontend variables.
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD` — a strong unique password.
+- `FRONTEND_ORIGIN` — exact public frontend origin, e.g. `https://classbookings.onrender.com` if frontend and backend share one origin.
+- `NEXT_PUBLIC_API_URL` — backend base URL used by the browser. If the frontend and backend are served by the same Render service/reverse proxy, configure the API routing consistently.
+- Optional SMTP variables listed in `.env.example`.
 
-- Keep all secrets in Render Environment, never in GitHub or this ZIP.
-- The admin session token is held in the browser app state; sign out when finished.
-- Before broad public use, add rate limiting, MFA, privacy/retention policy, monitoring, and tested database backup/restore procedures.
-- This is an application starter and has not undergone an independent security audit.
+Set the Render health check path to `/health` for the FastAPI service. If the current Render deployment runs frontend and backend in one container, set `API_PROXY_TARGET=http://127.0.0.1:8000` and preserve the existing start script. This archive does not automatically change Render service settings.
 
-## Local development
+## Important database migration note
 
-Backend dependencies: `pip install -r backend/requirements.txt`
+The upgrade adds a `class_sessions` table for per-date approval locking. SQLAlchemy `create_all` creates this new table on startup but does not alter existing booking columns. Existing booking records are preserved. Back up your PostgreSQL database before deploying.
 
-Run backend with the required environment variables set, then run the frontend from `frontend/` using `npm install` and `npm run dev`. For the all-in-one Render container, leave `NEXT_PUBLIC_API_URL` unset so Next.js uses the local `/api/*` rewrite to FastAPI on `127.0.0.1:8000`.
+The approval-capacity check uses a per-date row lock on PostgreSQL so simultaneous approval requests for the same date are serialized. Pending bookings do not count toward the limit.
+
+## Existing Render build issue addressed
+
+The prior Render log showed a TypeScript error in the admin page caused by redeclaring a variable named `d`. This admin page uses distinct variable names and typed response handling, avoiding that specific compile failure.
+
+## Email and security notes
+
+- The API logs when SMTP is not configured; it does not claim an email was delivered.
+- Use HTTPS, a managed PostgreSQL database, encrypted backups, rate limiting/bot protection, monitoring, and a verified sender domain before public production launch.
+- Keep secrets only in Render environment variables or a secret manager. Rotate any key that has been shared outside a trusted channel.
+- The included bearer token expires after eight hours. Consider individual administrator accounts and MFA for a larger team.
+
+## API endpoints
+
+- `GET /health`
+- `GET /api/public/calendar?start=YYYY-MM-DD&end=YYYY-MM-DD`
+- `POST /api/bookings`
+- `POST /api/admin/login`
+- `GET /api/admin/bookings?status=Pending&class_date=YYYY-MM-DD&q=search` (bearer token)
+- `POST /api/admin/bookings/{id}/approve`
+- `POST /api/admin/bookings/{id}/reject`
+- `POST /api/admin/bookings/{id}/cancel`
