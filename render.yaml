@@ -1,16 +1,25 @@
 services:
   - type: web
-    name: royaltica-morning-class
+    name: classbookings
     runtime: docker
     plan: free
     region: ohio
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
-        sync: false
+        fromDatabase:
+          name: royaltica-classbookings-db
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD
         sync: false
+
+databases:
+  - name: royaltica-classbookings-db
+    databaseName: royaltica_classbookings
+    user: royaltica_app
+    plan: free
+    region: ohio
