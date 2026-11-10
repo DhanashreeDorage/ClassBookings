@@ -32,3 +32,33 @@
 .participant-roster ul{margin:0;padding-left:17px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px}
 .participant-roster li{font-size:10px;color:#656174;overflow-wrap:anywhere}
 @media(max-width:680px){.calendar-day .day-participant{font-size:6px}.participant-roster ul{grid-template-columns:1fr}}
+
+/* Simple, clean public booking experience */
+.simple-public-shell{max-width:1180px;margin:0 auto;padding:0 28px;background:#faf9f7}
+.simple-header{max-width:none;padding:20px 0;border-bottom:1px solid #e9e6e1}
+.simple-intro{max-width:760px;margin:46px auto 28px;text-align:center;padding:0 12px}
+.simple-intro h1{font-size:clamp(30px,4vw,44px);line-height:1.12;letter-spacing:-1.4px;margin:10px 0 12px;color:#22243a}
+.simple-intro p{font-size:15px;line-height:1.6;color:#777487;margin:0 auto;max-width:560px}
+.simple-class-time{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-top:18px}
+.simple-class-time span{font-size:12px;font-weight:650;color:#5e5b70;background:#f0eee9;border-radius:20px;padding:8px 13px}
+.simple-booking-section{max-width:1080px;margin:0 auto;padding:0 0 48px}
+.simple-booking-section>.booking-mode-tabs{margin-bottom:18px}
+.simple-booking-layout{gap:20px;align-items:start}
+.simple-card{background:#fff;border:1px solid #e9e6e1;border-radius:14px;box-shadow:0 3px 16px rgba(31,29,47,.035);padding:22px}
+.simple-card .request-heading h3{font-size:23px;letter-spacing:-.5px;margin:7px 0}
+.simple-card .request-heading p{font-size:13px;line-height:1.55;color:#777487}
+.simple-card .field{margin-bottom:14px}
+.simple-card .field>span{font-size:12px;font-weight:650;color:#45445a}
+.simple-card input,.simple-card textarea{border:1px solid #e4e1dc;border-radius:8px;background:#fff;min-height:42px;font-size:13px}
+.simple-card textarea{min-height:64px}
+.simple-card .primary-btn{border-radius:8px;min-height:44px;font-size:13px;font-weight:700;box-shadow:none}
+.simple-selected-date{display:flex;flex-direction:column;gap:5px;margin-top:18px;padding:12px 13px;background:#f7f6f3;border-radius:9px}
+.simple-selected-date strong{font-size:13px;color:#2b2b40}
+.simple-card .calendar-counts{margin-top:10px}
+.simple-card .calendar-counts>span{background:#f6f5f2}
+.simple-card .calendar-top h3{font-size:20px}
+.simple-card .calendar-day{border-radius:7px}
+.simple-footer{max-width:none;border-top:1px solid #e9e6e1;padding:18px 0;margin-top:0}
+.simple-footer>span{font-size:11px;color:#898697}
+.simple-public-shell .hero-art,.simple-public-shell .public-hero,.simple-public-shell .bottom-promise{display:none}
+@media(max-width:760px){.simple-public-shell{padding:0 14px}.simple-intro{margin:30px auto 22px}.simple-card{padding:16px}.simple-booking-layout{grid-template-columns:1fr}.simple-footer{gap:10px;flex-wrap:wrap}.simple-footer>span{order:3;flex-basis:100%}}
