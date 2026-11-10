@@ -1,7 +1,7 @@
 import os
 import smtplib
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, time
 import re
 from email.message import EmailMessage
 from zoneinfo import ZoneInfo
@@ -24,8 +24,28 @@ elif DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = "HS256"
-TZ = ZoneInfo("America/New_York")
+IST = ZoneInfo("Asia/Kolkata")
+ET = ZoneInfo("America/New_York")
+TZ = IST
 CAPACITY = 25
+SLOT_STARTS = ["17:00", "18:00", "19:00", "20:00", "21:00"]
+
+def slot_details(class_day: date, slot_start: str):
+    start_hour, start_minute = map(int, slot_start.split(":"))
+    start_ist = datetime.combine(class_day, time(start_hour, start_minute), tzinfo=IST)
+    end_ist = start_ist + timedelta(hours=1)
+    start_et = start_ist.astimezone(ET)
+    end_et = end_ist.astimezone(ET)
+    def fmt(value):
+        return value.strftime("%-I:%M %p")
+    et_day = start_et.strftime("%b %-d") if start_et.date() != class_day else "same day"
+    return {
+        "start_ist": fmt(start_ist), "end_ist": fmt(end_ist),
+        "start_et": fmt(start_et), "end_et": fmt(end_et),
+        "et_date_label": et_day,
+        "ist_label": f"{fmt(start_ist)}–{fmt(end_ist)} IST",
+        "et_label": f"{fmt(start_et)}–{fmt(end_et)} {start_et.tzname()}",
+    }
 
 if len(SECRET_KEY) < 32:
     raise RuntimeError("Set SECRET_KEY to a random value of at least 32 characters in Render environment variables")
@@ -43,6 +63,7 @@ class Booking(Base):
     __tablename__ = "bookings"
     id: Mapped[int] = mapped_column(primary_key=True)
     class_date: Mapped[date] = mapped_column(Date, index=True)
+    slot_start: Mapped[str | None] = mapped_column(String(5), nullable=True, index=True)
     participant_name: Mapped[str] = mapped_column(String(160))
     participant_email: Mapped[str] = mapped_column(String(254), index=True)
     participant_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -59,6 +80,11 @@ class ClassSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 Base.metadata.create_all(engine)
+# Backward-compatible migration for existing Render PostgreSQL/SQLite databases.
+with engine.begin() as connection:
+    columns = {col["name"] for col in __import__("sqlalchemy").inspect(engine).get_columns("bookings")}
+    if "slot_start" not in columns:
+        connection.execute(text("ALTER TABLE bookings ADD COLUMN slot_start VARCHAR(5) NULL"))
 
 def db():
     session = SessionLocal()
@@ -105,12 +131,13 @@ class LoginIn(BaseModel):
 
 class BookingIn(BaseModel):
     class_date: date
+    slot_start: str
     full_name: str = Field(min_length=2, max_length=160)
     email: EmailStr
     phone: str | None = Field(default=None, max_length=40)
     learning_goal: str | None = Field(default=None, max_length=2000)
 
-app = FastAPI(title="Royaltica Morning Publishing Class API", version="2.0.0")
+app = FastAPI(title="Royaltica Evening Publishing Class API", version="3.0.0")
 origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
@@ -129,7 +156,7 @@ def provision_admin():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "application": "royaltica-morning-class", "version": "2.0.0"}
+    return {"status": "ok", "application": "royaltica-evening-class", "version": "3.0.0"}
 
 @app.post("/api/admin/login")
 def login(data: LoginIn):
@@ -149,51 +176,88 @@ def public_calendar(start: date = Query(...), end: date = Query(...), session: S
     if end < start or (end - start).days > 366:
         raise HTTPException(400, "Choose a date range up to 366 days")
     rows = session.execute(
-        select(Booking.class_date, Booking.status, func.count(Booking.id))
+        select(Booking.class_date, Booking.slot_start, Booking.status, func.count(Booking.id))
         .where(Booking.class_date.between(start, end))
-        .group_by(Booking.class_date, Booking.status)
+        .group_by(Booking.class_date, Booking.slot_start, Booking.status)
     ).all()
-    by_day: dict[str, dict[str, int]] = {}
-    for class_day, status, count in rows:
-        by_day.setdefault(class_day.isoformat(), {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
-        by_day[class_day.isoformat()][status.lower()] = count
+    grouped: dict[tuple[str, str], dict[str, int]] = {}
+    legacy_by_day: dict[str, dict[str, int]] = {}
+    for class_day, slot_start, status, count in rows:
+        if slot_start is None:
+            legacy_by_day.setdefault(class_day.isoformat(), {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
+            legacy_by_day[class_day.isoformat()][status.lower()] = count
+            continue
+        key = (class_day.isoformat(), slot_start)
+        grouped.setdefault(key, {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
+        grouped[key][status.lower()] = count
+
     participant_rows = session.execute(
-        select(Booking.class_date, Booking.participant_name)
+        select(Booking.class_date, Booking.slot_start, Booking.participant_name)
         .where(
             Booking.class_date.between(start, end),
             Booking.status == "Approved",
         )
-        .order_by(Booking.class_date, Booking.participant_name)
+        .order_by(Booking.class_date, Booking.slot_start, Booking.participant_name)
     ).all()
-    names_by_day: dict[str, list[str]] = {}
-    for class_day, participant_name in participant_rows:
-        names_by_day.setdefault(class_day.isoformat(), []).append(participant_name)
+    names_by_slot: dict[tuple[str, str], list[str]] = {}
+    legacy_names_by_day: dict[str, list[str]] = {}
+    for class_day, slot_start, participant_name in participant_rows:
+        if slot_start is None:
+            legacy_names_by_day.setdefault(class_day.isoformat(), []).append(participant_name)
+        else:
+            names_by_slot.setdefault((class_day.isoformat(), slot_start), []).append(participant_name)
 
     sessions = []
     current = start
     while current <= end:
         day_key = current.isoformat()
-        counts = by_day.get(day_key, {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
-        approved = counts["approved"]
+        slots = []
+        for slot_start in SLOT_STARTS:
+            counts = grouped.get((day_key, slot_start), {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
+            details = slot_details(current, slot_start)
+            approved = counts["approved"]
+            slots.append({
+                "slot_start": slot_start,
+                **details,
+                "approved": approved,
+                "pending": counts["pending"],
+                "participants": names_by_slot.get((day_key, slot_start), []),
+                "capacity": CAPACITY,
+                "available": max(0, CAPACITY - approved),
+                "full": approved >= CAPACITY,
+            })
+        legacy_counts = legacy_by_day.get(day_key, {"pending": 0, "approved": 0, "rejected": 0, "cancelled": 0})
+        legacy = None
+        if any(legacy_counts.values()):
+            legacy = {
+                "label": "Previous schedule · 8:00–9:00 AM US Eastern",
+                "pending": legacy_counts["pending"],
+                "approved": legacy_counts["approved"],
+                "participants": legacy_names_by_day.get(day_key, []),
+            }
         sessions.append({
             "date": day_key,
-            "start_time": "08:00",
-            "end_time": "09:00",
-            "time_zone": "America/New_York",
-            "approved": approved,
-            "pending": counts["pending"],
-            "participants": names_by_day.get(day_key, []),
-            "capacity": CAPACITY,
-            "available": max(0, CAPACITY - approved),
-            "booking_status": "Full" if approved >= CAPACITY else "Open",
+            "slots": slots,
+            "legacy": legacy,
+            "pending": sum(slot["pending"] for slot in slots) + legacy_counts["pending"],
+            "approved": sum(slot["approved"] for slot in slots) + legacy_counts["approved"],
+            "booking_status": "Full" if all(slot["full"] for slot in slots) else "Open",
         })
         current += timedelta(days=1)
-    return {"class_name": "Royaltica Morning Publishing Class", "schedule": "Daily", "sessions": sessions}
+    return {
+        "class_name": "Royaltica Evening Publishing Class",
+        "schedule": "Daily, 5:00 PM–10:00 PM IST",
+        "time_zone": "Asia/Kolkata",
+        "converted_time_zone": "America/New_York",
+        "sessions": sessions,
+    }
 
 @app.post("/api/bookings")
 def create_booking(data: BookingIn, session: Session = Depends(db)):
-    if data.class_date < datetime.now(TZ).date():
+    if data.class_date < datetime.now(IST).date():
         raise HTTPException(400, "Please choose today or a future class date")
+    if data.slot_start not in SLOT_STARTS:
+        raise HTTPException(400, "Choose an available one-hour slot between 5:00 PM and 10:00 PM IST")
     email = str(data.email).strip().lower()
     if engine.dialect.name == "postgresql":
         session.execute(
@@ -209,15 +273,20 @@ def create_booking(data: BookingIn, session: Session = Depends(db)):
     if existing_active:
         raise HTTPException(
             409,
-            f"You already have an active booking for {existing_active.class_date:%B %d, %Y} ({existing_active.status}). Only one active class booking is allowed per person. Please check your approval status instead.",
+            f"You already have an active booking for {existing_active.class_date:%B %d, %Y} ({existing_active.status}). Only one active booking is allowed per person. Please check your approval status instead.",
         )
     approved_count = session.scalar(
-        select(func.count(Booking.id)).where(Booking.class_date == data.class_date, Booking.status == "Approved")
+        select(func.count(Booking.id)).where(
+            Booking.class_date == data.class_date,
+            Booking.slot_start == data.slot_start,
+            Booking.status == "Approved",
+        )
     ) or 0
     if approved_count >= CAPACITY:
-        raise HTTPException(409, "This class is full. The maximum of 25 approved students has been reached.")
+        raise HTTPException(409, "This time slot is full. Please choose another slot.")
     booking = Booking(
         class_date=data.class_date,
+        slot_start=data.slot_start,
         participant_name=data.full_name.strip(),
         participant_email=email,
         participant_phone=data.phone,
@@ -228,19 +297,27 @@ def create_booking(data: BookingIn, session: Session = Depends(db)):
     session.commit()
     session.refresh(booking)
     booking_reference = f"ROY-{booking.id:06d}"
+    details = slot_details(booking.class_date, booking.slot_start)
     send_email(
         email,
-        "Royaltica class booking request received",
-        f"Hello {booking.participant_name},\n\nWe received your request for {booking.class_date:%B %d, %Y}, 8:00–9:00 AM Eastern Time.\nBooking reference: {booking_reference}\nYour request is Pending. Pending requests do not reserve a seat; your seat is confirmed only after approval.\n\nUse your email address and booking reference to check your status.\n\nRoyaltica Publishing",
+        "Royaltica publishing class booking request received",
+        f"Hello {booking.participant_name},\n\nWe received your request for {booking.class_date:%B %d, %Y}.\nIndia time: {details['ist_label']}\nUS Eastern time: {details['et_label']} ({details['et_date_label']})\nBooking reference: {booking_reference}\nYour request is Pending. Your slot is confirmed only after approval.\n\nUse your email address and booking reference to check your status.\n\nRoyaltica Publishing",
     )
     admin_email = os.getenv("ADMIN_NOTIFICATION_EMAIL")
     if admin_email:
         send_email(
             admin_email,
-            "New Morning Publishing Class booking request",
-            f"New pending request #{booking.id}\nDate: {booking.class_date}\nName: {booking.participant_name}\nEmail: {booking.participant_email}",
+            "New Royaltica Publishing Class booking request",
+            f"New pending request #{booking.id}\nDate: {booking.class_date}\nIndia time: {details['ist_label']}\nUS Eastern time: {details['et_label']}\nName: {booking.participant_name}\nEmail: {booking.participant_email}",
         )
-    return {"id": booking.id, "reference": booking_reference, "status": booking.status, "message": "Your request has been received. It is not confirmed until approved."}
+    return {
+        "id": booking.id,
+        "reference": booking_reference,
+        "status": booking.status,
+        "ist_time": details["ist_label"],
+        "eastern_time": details["et_label"],
+        "message": "Your request has been received. It is not confirmed until approved.",
+    }
 
 @app.get("/api/bookings/status")
 def booking_status(email: EmailStr, reference: str, session: Session = Depends(db)):
@@ -254,10 +331,13 @@ def booking_status(email: EmailStr, reference: str, session: Session = Depends(d
     )
     if not booking:
         raise HTTPException(404, "No booking matches that email address and reference")
+    details = slot_details(booking.class_date, booking.slot_start) if booking.slot_start else None
     return {
         "reference": f"ROY-{booking.id:06d}",
         "class_date": booking.class_date.isoformat(),
-        "class_time": "8:00–9:00 AM Eastern Time",
+        "class_time": (details["ist_label"] + " / " + details["et_label"]) if details else "Previous schedule: 8:00–9:00 AM US Eastern",
+        "ist_time": details["ist_label"] if details else "Previous schedule",
+        "eastern_time": details["et_label"] if details else "8:00–9:00 AM US Eastern",
         "status": booking.status,
         "message": "Your seat is confirmed." if booking.status == "Approved" else "Your request is awaiting review." if booking.status == "Pending" else "Please contact Royaltica Publishing if you need help with this request.",
     }
@@ -284,6 +364,9 @@ def list_bookings(
         {
             "id": b.id,
             "class_date": b.class_date.isoformat(),
+            "slot_start": b.slot_start,
+            "ist_time": slot_details(b.class_date, b.slot_start)["ist_label"] if b.slot_start else "Previous schedule",
+            "eastern_time": slot_details(b.class_date, b.slot_start)["et_label"] if b.slot_start else "8:00–9:00 AM US Eastern",
             "name": b.participant_name,
             "email": b.participant_email,
             "phone": b.participant_phone,
@@ -320,19 +403,22 @@ def update_status(booking_id: int, new_status: str, admin: str, session: Session
         approved_count = session.scalar(
             select(func.count(Booking.id)).where(
                 Booking.class_date == booking.class_date,
+                Booking.slot_start == booking.slot_start,
                 Booking.status == "Approved",
             )
         ) or 0
         if booking.status != "Approved" and approved_count >= CAPACITY:
-            raise HTTPException(409, "This class is full. The maximum of 25 approved students has been reached.")
+            raise HTTPException(409, "This time slot is full. Please review another slot.")
     booking.status = new_status
     booking.updated_at = datetime.now(timezone.utc)
     booking.reviewed_at = datetime.now(timezone.utc)
     booking.reviewed_by = admin
     session.commit()
+    slot_info = slot_details(booking.class_date, booking.slot_start) if booking.slot_start else None
     if new_status == "Approved":
-        detail = f"Your booking for {booking.class_date:%B %d, %Y}, 8:00–9:00 AM Eastern Time is approved."
-        subject = "Your Royaltica Morning Publishing Class booking is approved"
+        timing = f"India time: {slot_info['ist_label']}. US Eastern time: {slot_info['et_label']}." if slot_info else "This booking is under the previous 8:00–9:00 AM US Eastern schedule."
+        detail = f"Your booking for {booking.class_date:%B %d, %Y} is approved. {timing}"
+        subject = "Your Royaltica Publishing Class booking is approved"
     elif new_status == "Rejected":
         detail = f"Your booking request for {booking.class_date:%B %d, %Y} was not approved."
         subject = "Update on your Royaltica class booking"

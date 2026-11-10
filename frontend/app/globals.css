@@ -68,3 +68,19 @@
 .calendar-day.selected .day-class-time{color:#fff0cc}
 .simple-card .calendar-counts>span b{font-size:10px}
 @media(max-width:680px){.calendar-day .day-class-time{font-size:6px}}
+
+/* Evening booking slots: India time with automatic US Eastern conversion */
+.slot-field{margin-top:4px}
+.slot-options{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.slot-option{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:11px 12px;border:1px solid #e3e0da;border-radius:9px;background:#fff;text-align:left;cursor:pointer;color:#333149}
+.slot-option b{font-size:12px}
+.slot-option small{font-size:10px;color:#777487}
+.slot-option.chosen{border-color:#7c6a45;background:#f7f4ed;box-shadow:0 0 0 1px #7c6a45}
+.slot-option:disabled{opacity:.48;cursor:not-allowed;background:#f3f2f0}
+.slot-option em{font-size:9px;color:#a34f4f;font-style:normal;font-weight:700}
+.timezone-note{display:block;color:#777487;font-size:10px;line-height:1.5;margin-top:8px}
+.day-participant{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#55516a;font-size:7px;font-weight:650}
+.calendar-day.selected .day-participant{color:#fff0cc}
+.participant-roster li{line-height:1.45}
+.status-result p{white-space:pre-line}
+@media(max-width:680px){.slot-options{grid-template-columns:1fr}.calendar-day .day-participant{font-size:6px}}

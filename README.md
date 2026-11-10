@@ -6,7 +6,7 @@ This is an upgrade of the existing Royaltica Morning Class Booking starter. It r
 
 - Premium public booking portal with responsive monthly calendar.
 - Premium admin sign-in and booking-management dashboard.
-- Daily 8:00–9:00 AM `America/New_York` class sessions (DST-aware date handling).
+- Daily 5:00–10:00 PM IST `America/New_York` class sessions (DST-aware date handling).
 - Maximum **25 approved students per class date**.
 - Pending requests do not reserve a seat; approvals are checked against capacity on the server.
 - A class becomes Full when it has 25 approved bookings; cancellations release a seat.

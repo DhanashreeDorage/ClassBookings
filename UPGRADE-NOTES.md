@@ -1,23 +1,27 @@
 # Upgrade notes
 
-This bundle upgrades the existing Royaltica Morning Class Booking codebase. It does not create a second application or change the existing booking table schema.
+This bundle updates the existing Royaltica class-booking application to support evening time-slot selection.
 
-## Changes
-- Premium responsive public booking experience and admin dashboard.
-- Next.js and React dependencies updated to current patched maintenance/LTS releases (Next.js 15.5.29, React 19.3.1).
-- Public calendar with available-seat and pending/approved counts, without exposing participant details.
-- Email + booking-reference status lookup (`ROY-000123`).
-- Booking confirmation includes the reference.
-- Admin sign-in uses `ADMIN_EMAIL` and `ADMIN_PASSWORD` from environment variables.
+## Schedule and booking rules
+- Five one-hour slots each day: 5:00–6:00 PM, 6:00–7:00 PM, 7:00–8:00 PM, 8:00–9:00 PM, and 9:00–10:00 PM India Standard Time (IST).
+- Each slot also displays its automatically converted US Eastern time (EST or EDT), calculated for the selected date so daylight-saving changes are handled.
+- One active booking per email address across all dates. Rejected or cancelled requests do not block a new booking.
+- New requests start Pending. Only Approved bookings count against the 25-person capacity for each one-hour slot.
+- Public calendar shows approved participant names and their selected IST slot, plus pending counts. It does not expose email addresses or phone numbers.
+- Existing bookings from the previous fixed 8:00–9:00 AM US Eastern schedule remain visible as previous-schedule records; they are not silently assigned to a new evening slot.
+
+## Application updates
+- Simple responsive public booking page and admin dashboard.
+- Public calendar, booking form, approval-status lookup, admin approve/reject/cancel workflow.
+- PostgreSQL persistence and backward-compatible nullable `slot_start` database migration.
+- Optional SMTP notifications; delivery requires SMTP configuration.
 - Render single-container Docker deployment starts FastAPI and Next.js together and waits for the API health check.
-- PostgreSQL URL normalization for Render's `postgres://` / `postgresql://` connection strings.
-- Approval capacity locking enforces a maximum of 25 approved students per class date.
 
 ## Before deploying
 1. Back up the existing Render PostgreSQL database.
 2. Apply this bundle to the GitHub repository currently connected to the `classbookings` Render service.
-3. Configure `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SECRET_KEY` (32+ characters), and `DATABASE_URL` in Render. Configure SMTP variables only if email notifications are to be sent.
-4. Confirm the Render service builds from the repository root `Dockerfile`, and set health check path to `/health`.
-5. Deploy and test calendar load, a pending booking, status lookup, admin login, approval at capacity, cancellation, and email delivery if SMTP is configured.
+3. Configure `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `SECRET_KEY` (32+ characters), and `DATABASE_URL` in Render. Configure SMTP variables only if email notifications are required.
+4. Confirm the Render service builds from the repository-root `Dockerfile`, and set health check path to `/health`.
+5. Deploy and test each IST slot, Eastern-time conversion in both EST and EDT periods, one-active-booking-per-email, pending/approval status, capacity per slot, and cancellation.
 
-The archive can be prepared and statically checked here, but it cannot update the remote GitHub repository or Render service without access to that project. A full Next.js production build was not run in this environment because npm package installation did not complete.
+The package passed Python syntax and ZIP integrity checks. A full Next.js production build was not verified because npm dependency installation timed out in this environment. The remote GitHub repository and Render service have not been changed by creating this archive.
