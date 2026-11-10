@@ -62,3 +62,9 @@
 .simple-footer>span{font-size:11px;color:#898697}
 .simple-public-shell .hero-art,.simple-public-shell .public-hero,.simple-public-shell .bottom-promise{display:none}
 @media(max-width:760px){.simple-public-shell{padding:0 14px}.simple-intro{margin:30px auto 22px}.simple-card{padding:16px}.simple-booking-layout{grid-template-columns:1fr}.simple-footer{gap:10px;flex-wrap:wrap}.simple-footer>span{order:3;flex-basis:100%}}
+
+/* Show class timing in calendar instead of approval totals */
+.calendar-day .day-class-time{display:block;color:#5b5870;font-size:7px;line-height:1.25;font-weight:750;white-space:nowrap}
+.calendar-day.selected .day-class-time{color:#fff0cc}
+.simple-card .calendar-counts>span b{font-size:10px}
+@media(max-width:680px){.calendar-day .day-class-time{font-size:6px}}
