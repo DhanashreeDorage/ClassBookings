@@ -137,7 +137,7 @@ class BookingIn(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     learning_goal: str | None = Field(default=None, max_length=2000)
 
-app = FastAPI(title="Royaltica Evening Publishing Class API", version="3.0.0")
+app = FastAPI(title="Royaltica Royaltica Publishing Masterclass API", version="3.0.0")
 origin = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
@@ -245,7 +245,7 @@ def public_calendar(start: date = Query(...), end: date = Query(...), session: S
         })
         current += timedelta(days=1)
     return {
-        "class_name": "Royaltica Evening Publishing Class",
+        "class_name": "Royaltica Royaltica Publishing Masterclass",
         "schedule": "Daily, 5:00 PM–10:00 PM IST",
         "time_zone": "Asia/Kolkata",
         "converted_time_zone": "America/New_York",

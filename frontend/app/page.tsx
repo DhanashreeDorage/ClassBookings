@@ -26,8 +26,8 @@ export default function Home(){
   </header>
   <section className="simple-intro">
    <div className="eyebrow">ROYALTICA PUBLISHING</div>
-   <h1>Evening Publishing Class</h1>
-   <p>Choose an evening time, book your class, and check your approval status.</p>
+   <h1>Royaltica Publishing Masterclass</h1>
+   <p>Build your publishing journey with focused, practical evening learning sessions.</p>
    <div className="simple-class-time"><span>Daily · 5:00–10:00 PM IST</span><span>US Eastern (EST/EDT) shown automatically</span></div>
   </section>
   <section className="booking-section simple-booking-section">
